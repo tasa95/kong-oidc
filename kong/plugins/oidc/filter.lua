@@ -1,17 +1,19 @@
 local M = {}
 
-local function shouldIgnoreRequest(patterns)
-  if (patterns) then
+local function shouldIgnoreRequest(patterns, path)
+  if patterns then
     for _, pattern in ipairs(patterns) do
-      local isMatching = not (string.find(ngx.var.uri, pattern) == nil)
-      if (isMatching) then return true end
+      if string.find(path, pattern) ~= nil then
+        return true
+      end
     end
   end
   return false
 end
 
-function M.shouldProcessRequest(config)
-  return not shouldIgnoreRequest(config.filters)
+-- `path` : chemin de la requête ; à défaut, ngx.var.uri (compatibilité).
+function M.shouldProcessRequest(config, path)
+  return not shouldIgnoreRequest(config.filters, path or ngx.var.uri)
 end
 
 return M

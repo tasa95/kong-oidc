@@ -2,49 +2,35 @@ local lu = require("luaunit")
 
 TestIntrospect = require("test.unit.mockable_case"):extend()
 
-
 function TestIntrospect:setUp()
-  TestIntrospect.super:setUp()
-  self.handler = require("kong.plugins.oidc.handler")()
+  TestIntrospect.super.setUp(self)
+  package.loaded["resty.openidc"] = nil
+  self.openidc = {
+    introspect = function() return { sub = "sub" }, nil end,
+    authenticate = function() return {}, nil end,
+  }
+  package.preload["resty.openidc"] = function() return self.openidc end
+  self.handler = require("kong.plugins.oidc.handler")
 end
 
 function TestIntrospect:tearDown()
-  TestIntrospect.super:tearDown()
+  TestIntrospect.super.tearDown(self)
 end
 
 function TestIntrospect:test_access_token_exists()
-  ngx.req.get_headers = function() return {Authorization = "Bearer xxx"} end
-  local dict = {}
-  function dict:get(key) return key end
-  _G.ngx.shared = {introspection = dict }
-
-  ngx.encode_base64 = function(x)
-    return "eyJzdWIiOiJzdWIifQ=="
-  end
-
-  local headers = {}
-  ngx.req.set_header = function(h, v)
-    headers[h] = v
-  end
-
-  self.handler:access({introspection_endpoint = "x"})
+  self.request.headers.Authorization = "Bearer xxx"
+  self.handler:access({ introspection_endpoint = "x" })
   lu.assertTrue(self:log_contains("introspect succeeded"))
-  lu.assertEquals(headers['X-Userinfo'], "eyJzdWIiOiJzdWIifQ==")
+  lu.assertEquals(self.headers["X-Userinfo"], "b64(encoded)")
 end
 
 function TestIntrospect:test_no_authorization_header()
-  package.loaded["resty.openidc"].authenticate = function(...) return {}, nil end
-  ngx.req.get_headers = function() return {} end
-
-  local headers = {}
-  ngx.req.set_header = function(h, v)
-    headers[h] = v
-  end
-
-  self.handler:access({introspection_endpoint = "x"})
-  lu.assertFalse(self:log_contains(self.mocked_ngx.ERR))
-  lu.assertEquals(headers['X-Userinfo'], nil)
+  local authenticated = false
+  self.openidc.authenticate = function() authenticated = true; return {}, nil end
+  self.handler:access({ introspection_endpoint = "x" })
+  lu.assertTrue(authenticated)
+  lu.assertFalse(self:log_contains("err"))
+  lu.assertNil(self.headers["X-Userinfo"])
 end
-
 
 lu.run()

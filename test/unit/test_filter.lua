@@ -4,7 +4,7 @@ local lu = require("luaunit")
 TestFilter = require("test.unit.base_case"):extend()
 
 function TestFilter:setUp()
-  TestFilter.super:setUp()
+  TestFilter.super.setUp(self)
   _G.ngx = {
     var = {
       uri = ""
@@ -13,7 +13,7 @@ function TestFilter:setUp()
 end
 
 function TestFilter:tearDown()
-  TestFilter.super:tearDown()
+  TestFilter.super.tearDown(self)
 end
 
 local config =  {

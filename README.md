@@ -1,3 +1,84 @@
+# kong-oidc — portage Kong 3.x et mode multi-tenant (branche `kong3-multitenant`)
+
+Fork de `nokia/kong-oidc` (archivé) adapté à **Kong 3.x** (testé pour Kong 3.9.4 OSS).
+
+## Changements par rapport à nokia/kong-oidc
+
+- `handler.lua` : table simple (`PRIORITY`, `VERSION`) au lieu de `kong.plugins.base_plugin`
+  (supprimé dans Kong 3.0) ; plus de variables globales ; PDK Kong (`kong.request`,
+  `kong.service.request`, `kong.response`, `kong.client`) au lieu de `ngx.*`.
+- `schema.lua` : format de schéma Kong 3 (`typedefs`, `config` de type `record`).
+- Dépendance `lua-resty-openidc == 1.8.0-1` (dernière version compatible avec
+  `lua-resty-session` 4.0.5 embarqué par Kong 3.9 ; les 1.9.x exigent 4.2.0).
+- Les erreurs d'authentification sont journalisées, plus renvoyées au client.
+- Les en-têtes d'identité (`X-Userinfo`, `X-Access-Token`, `X-ID-Token`, `X-Tenant`)
+  envoyés par le client sont **toujours effacés** : sur un chemin filtré, un client
+  pouvait auparavant fournir son propre `X-Userinfo` à l'amont.
+- `required_roles` : refus (403) si l'utilisateur n'a aucun des rôles exigés
+  (revendication `roles`).
+- `consumer_mapping` : associe l'utilisateur au consumer Kong de `custom_id`
+  `<tenant>:<sub>` s'il existe. Le plugin d'origine ne crée **aucun** consumer
+  (seulement un « credential » en contexte), donc les plugins posés sur un consumer
+  ne s'appliquaient pas.
+- **Rupture** : `session_secret` n'est plus décodé en base64 ; c'est une chaîne
+  d'au moins 32 caractères (référençable : `{vault://env/...}`).
+
+## Mode multi-tenant
+
+Un tenant = un fournisseur OIDC (realm Keycloak) + un client. Une seule instance
+du plugin peut servir plusieurs tenants :
+
+```yaml
+plugins:
+  - name: oidc
+    config:
+      session_secret: "{vault://env/kong-oidc-session-secret}"
+      session_storage: redis
+      session_redis_host: redis-sessions
+      default_tenant: null          # aucun tenant par défaut : 404 si rien ne correspond
+      tenants:
+        - name: poc
+          hosts: [crapi.localhost]
+          discovery: http://keycloak:8080/realms/poc/.well-known/openid-configuration
+          client_id: kong
+          client_secret: "{vault://env/kong-oidc-poc-secret}"
+        - name: acme
+          path_prefix: /t/acme       # callback : /t/acme/oidc/callback, déconnexion : /t/acme/logout
+          discovery: http://keycloak:8080/realms/acme/.well-known/openid-configuration
+          client_id: kong
+          client_secret: "{vault://env/kong-oidc-acme-secret}"
+```
+
+Sélection du tenant (`tenant.lua`) : tous les critères déclarés d'un tenant doivent
+correspondre ; le plus spécifique l'emporte (hôte exact > `*.domaine` > préfixe le plus
+long) ; sinon `default_tenant` ; sinon **404**. Le tenant n'est jamais choisi d'après un
+en-tête fourni par le client.
+
+Isolation des sessions entre tenants (`session.lua`) :
+
+| Mesure | Effet |
+|---|---|
+| Cookie `oidc_<tenant>` | une session distincte par tenant dans le navigateur |
+| `audience` = nom du tenant (lua-resty-session 4) | une session d'un tenant est refusée par un autre, même cookie renommé |
+| Secret par tenant (propre, ou HMAC du secret maître et du nom) | un cookie d'un tenant ne se déchiffre pas avec la clé d'un autre |
+| Préfixe Redis `oidc:<tenant>` | clés de session séparées en stockage Redis |
+
+Le tenant est transmis à l'amont dans `X-Tenant` et aux autres plugins dans
+`kong.ctx.shared.oidc_tenant` (avec `oidc_sub`, `oidc_username`). `X-Userinfo` garde
+son format d'origine. Sans `tenants`, la configuration historique à plat fonctionne
+toujours (tenant implicite `default`).
+
+## Tests
+
+```sh
+./test/unit/run.sh    # LuaJIT ou Lua 5.x, sans Kong ni Docker (télécharge luaunit)
+```
+
+Les fichiers `spec/`, `ci/`, `test/docker/`, `.travis.yml` datent de Kong 0.x/1.0 et ne
+sont plus maintenus.
+
+---
+
 # Not maintained
 
 This project is not maintaned anymore. It is not recommended to use this project in production.
