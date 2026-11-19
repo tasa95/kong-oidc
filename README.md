@@ -16,6 +16,9 @@ Fork de `nokia/kong-oidc` (archivé) adapté à **Kong 3.x** (testé pour Kong 3
   pouvait auparavant fournir son propre `X-Userinfo` à l'amont.
 - `required_roles` : refus (403) si l'utilisateur n'a aucun des rôles exigés
   (revendication `roles`).
+- `forward_access_token` (défaut `false`) : le jeton d'accès n'est transmis à l'amont
+  (`X-Access-Token`) que si l'instance du plugin l'active. Principe du BFF : les jetons
+  restent dans Kong, l'amont ne reçoit que l'identité (`X-Userinfo`).
 - `consumer_mapping` : associe l'utilisateur au consumer Kong de `custom_id`
   `<tenant>:<sub>` s'il existe. Le plugin d'origine ne crée **aucun** consumer
   (seulement un « credential » en contexte), donc les plugins posés sur un consumer
@@ -221,7 +224,7 @@ Server: kong/0.11.0
 
 ### Upstream API request
 
-The plugin adds a additional `X-Userinfo`, `X-Access-Token` and `X-Id-Token` headers to the upstream request, which can be consumer by upstream server. All of them are base64 encoded:
+The plugin adds `X-Userinfo` and `X-Id-Token` headers to the upstream request, plus `X-Access-Token` only when `forward_access_token` is enabled (off by default in this fork). `X-Userinfo` and `X-Id-Token` are base64 encoded:
 
 ```
 GET / HTTP/1.1

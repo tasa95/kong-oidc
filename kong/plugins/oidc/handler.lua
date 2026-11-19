@@ -88,7 +88,7 @@ local function handle(config, oidcConfig, t)
       -- Rôle exigé mais aucune information utilisateur : on refuse.
       return utils.exit(403, "Forbidden")
     end
-    if response.access_token then
+    if response.access_token and config.forward_access_token then
       utils.injectAccessToken(response.access_token)
     end
     if response.id_token then

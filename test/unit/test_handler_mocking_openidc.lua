@@ -45,9 +45,15 @@ function TestHandler:test_authenticate_ok_with_no_accesstoken()
   lu.assertNil(self.headers["X-Access-Token"])
 end
 
-function TestHandler:test_authenticate_ok_with_accesstoken()
+function TestHandler:test_accesstoken_not_forwarded_by_default()
   self.openidc.authenticate = function() return { access_token = "ACCESS_TOKEN" }, nil end
   self.handler:access({})
+  lu.assertNil(self.headers["X-Access-Token"])
+end
+
+function TestHandler:test_accesstoken_forwarded_when_enabled()
+  self.openidc.authenticate = function() return { access_token = "ACCESS_TOKEN" }, nil end
+  self.handler:access({ forward_access_token = true })
   lu.assertEquals(self.headers["X-Access-Token"], "ACCESS_TOKEN")
 end
 
@@ -192,7 +198,9 @@ function TestHandler:test_required_role_present()
     return { user = { sub = "v1", roles = { "validator" } }, access_token = "AT" }, nil
   end
   self.request.host = "console.localhost"
-  self.handler:access(multi_config())
+  local config = multi_config()
+  config.forward_access_token = true -- console: the token is its proof of decision
+  self.handler:access(config)
   lu.assertNil(self.exit_status)
   lu.assertEquals(self.headers["X-Access-Token"], "AT")
 end

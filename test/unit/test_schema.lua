@@ -15,7 +15,35 @@ package.preload["kong.db.schema.typedefs"] = function()
   return setmetatable({}, { __index = function(_, name) return typedef({ type = "string", typedef = name }) end })
 end
 
+-- Outside Kong there is no ngx: provide the ngx.null sentinel the schema expects.
+_G.ngx = _G.ngx or { null = setmetatable({}, { __tostring = function() return "ngx.null" end }) }
+
 local schema = require("kong.plugins.oidc.schema")
+
+-- check_tenants is not exported (Kong rejects unknown schema fields): fetch it
+-- where Kong reads it, from the entity_checks of the config field.
+local function find_check_tenants()
+  for _, field in ipairs(schema.fields) do
+    if field.config then
+      for _, check in ipairs(field.config.entity_checks or {}) do
+        if check.custom_entity_check then return check.custom_entity_check.fn end
+      end
+    end
+  end
+end
+schema.check_tenants = find_check_tenants()
+
+-- Kong passes unset optional fields as ngx.null, not nil.
+function TestSchema:test_ngx_null_fields()
+  local null = ngx.null
+  lu.assertTrue(schema.check_tenants({
+    tenants = { { name = "a", hosts = { "a" }, path_prefix = null } },
+    default_tenant = null, client_id = null, session_redis_host = null,
+  }))
+  local ok, err = schema.check_tenants({ tenants = null, client_id = null })
+  lu.assertNil(ok)
+  lu.assertStrContains(err, "client_id")
+end
 
 function TestSchema:test_name()
   lu.assertEquals(schema.name, "oidc")

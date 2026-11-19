@@ -78,16 +78,30 @@ local config_fields = {
   -- Associe l'utilisateur à un consumer Kong réel (custom_id = « <tenant>:<sub> »)
   -- quand il existe, pour que les plugins posés sur ce consumer s'appliquent.
   { consumer_mapping = { type = "boolean", required = true, default = false } },
+  -- Forward the Keycloak access token upstream in X-Access-Token. Off by
+  -- default: the BFF keeps tokens server-side, upstreams only get the
+  -- identity (X-Userinfo). Enable only on the one service that needs the
+  -- token (the console, which attaches it to each decision as proof).
+  { forward_access_token = { type = "boolean", required = true, default = false } },
 }
 for _, field in ipairs(provider_fields(false)) do
   config_fields[#config_fields + 1] = field
 end
 
+-- Kong passes unset optional fields to entity checks as ngx.null (a truthy
+-- userdata), not nil: normalise before testing them.
+local null = ngx and ngx.null
+local function opt(v)
+  if v == null then return nil end
+  return v
+end
+
 local function check_tenants(config)
-  local tenants = config.tenants or {}
+  local tenants = opt(config.tenants) or {}
+  local default_tenant = opt(config.default_tenant)
 
   if #tenants == 0 then
-    if not (config.client_id and config.client_secret and config.discovery) then
+    if not (opt(config.client_id) and opt(config.client_secret) and opt(config.discovery)) then
       return nil, "either 'tenants' or 'client_id', 'client_secret' and 'discovery' must be set"
     end
     return true
@@ -100,17 +114,18 @@ local function check_tenants(config)
     end
     seen[t.name] = true
 
-    local has_hosts = t.hosts and #t.hosts > 0
-    if not has_hosts and not t.path_prefix and config.default_tenant ~= t.name then
+    local hosts = opt(t.hosts)
+    local has_hosts = hosts and #hosts > 0
+    if not has_hosts and not opt(t.path_prefix) and default_tenant ~= t.name then
       return nil, "tenant '" .. t.name .. "' needs 'hosts' or 'path_prefix' (or must be the default tenant)"
     end
   end
 
-  if config.default_tenant and not seen[config.default_tenant] then
-    return nil, "default_tenant '" .. config.default_tenant .. "' is not a declared tenant"
+  if default_tenant and not seen[default_tenant] then
+    return nil, "default_tenant '" .. default_tenant .. "' is not a declared tenant"
   end
 
-  if config.session_storage == "redis" and not config.session_redis_host then
+  if config.session_storage == "redis" and not opt(config.session_redis_host) then
     return nil, "'session_redis_host' is required when session_storage is 'redis'"
   end
 
@@ -134,6 +149,6 @@ return {
         },
     } },
   },
-  -- Exposé pour les tests unitaires.
-  check_tenants = check_tenants,
+  -- No extra field here: Kong rejects unknown fields in a plugin schema
+  -- ("unknown field"). Tests read check_tenants from entity_checks.
 }

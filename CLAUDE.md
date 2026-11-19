@@ -18,7 +18,7 @@ Plugin OIDC pour Kong 3.x, multi-tenant. Dépôt git **distinct** du POC : remot
 | `session.lua` | options lua-resty-session 4 par tenant (cookie, audience, secret dérivé, préfixe Redis) |
 | `utils.lua` | options lua-resty-openidc, injection des en-têtes, rôles |
 | `consumer.lua` | association au consumer Kong `custom_id = <tenant>:<sub>` |
-| `schema.lua` | schéma Kong 3 + `check_tenants` (exposé pour les tests) |
+| `schema.lua` | schéma Kong 3 ; `check_tenants` dans `entity_checks` (non exporté : Kong refuse les champs inconnus) |
 
 ## Invariants de sécurité (chacun couvert par un test)
 
